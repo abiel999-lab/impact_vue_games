@@ -6,7 +6,7 @@ import MemoryBoard from '../views/MemoryBoard.vue'
 const routes = [
   { path: '/', component: MainMenu },
   { path: '/tictactoe', component: TicTacToe },
-  { path: '/memory', component: MemoryBoard }
+  { path: '/memoryboard', component: MemoryBoard }
 ]
 
 const router = createRouter({

@@ -1,103 +1,243 @@
 <template>
-  <div class="memory-game">
-    <div class="grid">
+  <div class="memory-container">
+    <!-- Pilih jumlah tiles -->
+    <div class="tile-select">
+      <span>Jumlah Tiles:</span>
+      <div class="mode-buttons">
+        <button
+          v-for="size in tileOptions"
+          :key="size"
+          @click="selectTiles(size)"
+          :class="['mode-btn', { active: tiles === size }]"
+        >
+          {{ size }}
+        </button>
+      </div>
+      <button class="start-btn" @click="startGame">Start Game</button>
+    </div>
+
+    <!-- Timer & Status -->
+    <p v-if="timeLeft > 0 && !status" class="timer">Waktu: {{ timeLeft }} detik</p>
+    <p v-if="status" class="status">{{ status }}</p>
+
+    <!-- Grid -->
+    <div
+      class="grid"
+      :style="{ gridTemplateColumns: `repeat(${gridCols}, 70px)` }"
+    >
       <div
         v-for="(card, index) in cards"
         :key="index"
         class="card"
-        :class="{ flipped: card.flipped || card.matched }"
+        :class="[theme, { flipped: card.flipped || card.matched }]"
         @click="flipCard(index)"
       >
-        <span v-if="card.flipped || card.matched">{{ card.value }}</span>
+        <span v-if="card.flipped || card.matched">{{ card.emoji }}</span>
       </div>
     </div>
 
-    <p v-if="isWin" class="win-message">🎉 Kamu menang! Semua kartu cocok 🎉</p>
     <button class="reset-btn" @click="resetGame">Reset Game</button>
   </div>
 </template>
 
 <script setup>
 import { ref, computed } from 'vue'
+import { useTheme } from '../composables/useTheme.js'
 
-// simbol kartu (bisa ditambah)
-const symbols = ['🍎','🍌','🍇','🍉','🍒','🍓']
+const { theme } = useTheme()
 
-// buat deck 2x lipat (pasangan) & acak
-const createDeck = () => {
-  return [...symbols, ...symbols]
-    .sort(() => Math.random() - 0.5)
-    .map(value => ({ value, flipped: false, matched: false }))
+const tileOptions = [16, 32, 48, 64]
+const tiles = ref(16)
+const cards = ref([])
+const emojis = [
+  '🍎','🍌','🍇','🍉','🍓','🥝','🍑','🍒','🥑','🍍',
+  '🍋','🥥','🥭','🫐','🍈','🍐','🍔','🍟','🌭','🍕',
+  '🍿','🥗','🥪','🌮','🌯','🥙','🥞','🧇','🍗','🥩',
+  '🥓','🧀'
+]
+const timeLeft = ref(0)
+const status = ref(null)
+let timer = null
+let flippedIndices = []
+
+// Kolom grid dinamis
+const gridCols = computed(() => {
+  switch (tiles.value) {
+    case 16: return 4   // 4x4
+    case 32: return 8   // 8x4
+    case 48: return 8   // 8x6
+    case 64: return 8   // 8x8
+    default: return Math.sqrt(tiles.value)
+  }
+})
+
+function shuffle(array) {
+  return array.sort(() => Math.random() - 0.5)
 }
 
-const cards = ref(createDeck())
-const flippedCards = ref([])
+function selectTiles(size) {
+  tiles.value = size
+  resetGame() // langsung update grid
+}
+
+function startGame() {
+  resetGame()
+  startTimer()
+}
+
+function startTimer() {
+  clearInterval(timer)
+  status.value = null
+  const durations = { 16: 60, 32: 120, 48: 180, 64: 300 }
+  timeLeft.value = durations[tiles.value] || 60
+
+  timer = setInterval(() => {
+    timeLeft.value--
+    if (timeLeft.value <= 0) {
+      endGame('⏰ Waktu Habis! Kamu Cupu')
+    }
+  }, 1000)
+}
+
+function resetGame() {
+  clearInterval(timer)
+  timeLeft.value = 0
+  status.value = null
+
+  const pairCount = tiles.value / 2
+  const selectedEmojis = emojis.slice(0, pairCount)
+  cards.value = shuffle([...selectedEmojis, ...selectedEmojis]).map(e => ({
+    emoji: e,
+    flipped: false,
+    matched: false,
+  }))
+  flippedIndices = []
+}
 
 function flipCard(index) {
+  if (status.value || timeLeft.value <= 0) return
+
   const card = cards.value[index]
-  if (card.flipped || card.matched || flippedCards.value.length === 2) return
+  if (card.flipped || card.matched || flippedIndices.length === 2) return
 
   card.flipped = true
-  flippedCards.value.push(index)
+  flippedIndices.push(index)
 
-  // jika 2 kartu terbuka
-  if (flippedCards.value.length === 2) {
-    const [first, second] = flippedCards.value
-    if (cards.value[first].value === cards.value[second].value) {
+  if (flippedIndices.length === 2) {
+    const [first, second] = flippedIndices
+    if (cards.value[first].emoji === cards.value[second].emoji) {
       cards.value[first].matched = true
       cards.value[second].matched = true
+      flippedIndices = []
+
+      // Cek kemenangan
+      if (cards.value.every(c => c.matched)) {
+        endGame('🎉 Kamu Menang!')
+      }
     } else {
       setTimeout(() => {
         cards.value[first].flipped = false
         cards.value[second].flipped = false
+        flippedIndices = []
       }, 800)
     }
-    flippedCards.value = []
   }
 }
 
-function resetGame() {
-  cards.value = createDeck()
-  flippedCards.value = []
+function endGame(message) {
+  clearInterval(timer)
+  status.value = message
 }
-
-const isWin = computed(() => cards.value.every(c => c.matched))
 </script>
 
 <style scoped>
-.memory-game { text-align: center; margin-top: 2rem; }
+.memory-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.tile-select {
+  margin-bottom: 1rem;
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  color: #ab92d4;
+}
+
+.mode-buttons {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.mode-btn {
+  padding: 0.4rem 0.8rem;
+  border: 2px solid #ab92d4;
+  border-radius: 6px;
+  background: transparent;
+  color: #ab92d4;
+  cursor: pointer;
+  transition: 0.3s;
+}
+.mode-btn:hover,
+.mode-btn.active {
+  background: #ab92d4;
+  color: white;
+}
+
+.start-btn {
+  padding: 0.4rem 0.8rem;
+  background: #ab92d4;
+  border: none;
+  border-radius: 6px;
+  color: white;
+  cursor: pointer;
+}
+
 .grid {
   display: grid;
-  grid-template-columns: repeat(4, 80px);
-  gap: 10px;
-  justify-content: center;
+  grid-gap: 10px;
   margin-bottom: 1rem;
 }
+
 .card {
-  width: 80px;
-  height: 80px;
-  background: #3498db;
-  color: white;
+  width: 70px;
+  height: 70px;
   display: flex;
-  justify-content: center;
   align-items: center;
+  justify-content: center;
   font-size: 2rem;
+  font-weight: bold;
   border-radius: 8px;
   cursor: pointer;
-  transition: background 0.3s;
+  transition: background 0.3s, transform 0.3s;
 }
-.card.flipped {
-  background: #f1c40f;
-  color: black;
-}
-.win-message { font-size: 1.2rem; margin-top: 1rem; }
+.card.light { background: #3498db; color: white; }
+.card.dark { background: #2980b9; color: white; }
+.card.flipped { background: white !important; color: black !important; transform: rotateY(180deg); }
+
 .reset-btn {
   padding: 0.5rem 1rem;
   border: none;
-  background: #42b883;
+  background: #ab92d4;
   color: white;
   border-radius: 5px;
   cursor: pointer;
 }
-.reset-btn:hover { background: #2d8f6d; }
+.reset-btn:hover {
+  background: #9677c4;
+}
+
+.timer {
+  margin-bottom: 0.5rem;
+  font-weight: bold;
+  color: #ab92d4;
+}
+.status {
+  margin-bottom: 0.5rem;
+  font-weight: bold;
+  color: #ffcc00;
+}
 </style>
